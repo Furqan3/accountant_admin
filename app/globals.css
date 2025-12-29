@@ -2,12 +2,30 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #004250;
+
+  /* Primary color theme */
+  --primary: #004250;
+  --primary-dark: #003340;
+  --primary-light: #005566;
+
+  /* White color */
+  --white: #ffffff;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  /* Primary color variants */
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-light: var(--primary-light);
+
+  /* White color */
+  --color-white: var(--white);
+
+  /* Font configuration */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
