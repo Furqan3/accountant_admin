@@ -1,11 +1,12 @@
+import Link from "next/link";
 
-
-import Link from "next/link"
-
-export default function Logo() {
+export default function Logo({ className = "" }: { className?: string }) {
   return (
-    <Link href="/" className="font-normal text-xl text-gray-800">
-      Accountant<sup>®</sup>
+    <Link
+      href="/"
+      className={`font-normal text-gray-800 ${className}`}
+    >
+      Accountant<sup >®</sup>
     </Link>
-  )
+  );
 }
