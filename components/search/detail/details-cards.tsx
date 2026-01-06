@@ -1,10 +1,10 @@
 import { Building, MapPin, Calendar, TriangleAlert } from "lucide-react";
 
 type DetailItem = {
-  incorporateddate: Date;
+  incorporateddate?: Date;
   address: string;
-  confirmationdate: Date;
-  accountduedate: Date;
+  confirmationdate?: Date;
+  accountduedate?: Date;
 };
 
 const ICON_MAP = {
@@ -22,9 +22,10 @@ const LABEL_MAP: Record<keyof DetailItem, string> = {
 };
 
 // Helper function to format date as dd-MM-yyyy
-function formatDate(date: Date): string {
+function formatDate(date: Date | undefined): string {
+  if (!date) return "Not set";
   const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0'); 
+  const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();
   return `${day}-${month}-${year}`;
 }
@@ -47,7 +48,7 @@ export default function DetailsCards({ data }: { data: DetailItem }) {
           return (
             <div
               key={key}
-              className="bg-white rounded-2xl p-5 text-primary flex items-center gap-4 shadow-sm w-full max-w-sm"
+              className="bg-white rounded-2xl p-5 text-primary flex items-center gap-4  w-full max-w-sm"
             >
               {/* Icon */}
               <div className="w-12 h-12 rounded-full flex items-center justify-center bg-blue-100">

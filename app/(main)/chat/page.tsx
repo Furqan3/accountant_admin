@@ -1,161 +1,336 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSocket } from "@/contexts/socket-context";
 import ChatSidebar, { ChatConversation } from "@/components/chat/chat-sidebar";
 import ChatMessages, { Message } from "@/components/chat/chat-messages";
-
-const conversationsData: ChatConversation[] = [
-  {
-    id: "1",
-    name: "Tech Solutions Ltd.",
-    lastMessage: "Thanks for the update on the confirmation statement",
-    timestamp: "10:30 AM",
-    unread: 2,
-  },
-  {
-    id: "2",
-    name: "Innovatech Corp.",
-    lastMessage: "When can we schedule the filing?",
-    timestamp: "Yesterday",
-  },
-  {
-    id: "3",
-    name: "FutureSoft Inc.",
-    lastMessage: "Payment has been processed",
-    timestamp: "2 days ago",
-  },
-  {
-    id: "4",
-    name: "Alpha Systems Ltd.",
-    lastMessage: "Please send the documents",
-    timestamp: "3 days ago",
-  },
-];
-
-const messagesData: Record<string, Message[]> = {
-  "1": [
-    {
-      id: "1",
-      text: "Hello, I need help with my confirmation statement.",
-      sender: "client",
-      timestamp: "10:00 AM",
-    },
-    {
-      id: "2",
-      text: "Hi! I'd be happy to help you with that. Can you provide your company registration number?",
-      sender: "user",
-      timestamp: "10:05 AM",
-    },
-    {
-      id: "3",
-      text: "Yes, it's 12345678",
-      sender: "client",
-      timestamp: "10:07 AM",
-    },
-    {
-      id: "4",
-      text: "Thank you. I've located your company. Your confirmation statement is due next month. Would you like me to proceed with the filing?",
-      sender: "user",
-      timestamp: "10:10 AM",
-    },
-    {
-      id: "5",
-      text: "Yes, please proceed. What documents do I need to provide?",
-      sender: "client",
-      timestamp: "10:15 AM",
-    },
-    {
-      id: "6",
-      text: "Hello, I need help with my confirmation statement.",
-      sender: "client",
-      timestamp: "10:00 AM",
-    },
-    {
-      id: "7",
-      text: "Hi! I'd be happy to help you with that. Can you provide your company registration number?",
-      sender: "user",
-      timestamp: "10:25 AM",
-    },
-    {
-      id: "8",
-      text: "Yes, it's 12345678",
-      sender: "client",
-      timestamp: "10:07 AM",
-    },
-    {
-      id: "9",
-      text: "Thank you. I've located your company. Your confirmation statement is due next month. Would you like me to proceed with the filing?",
-      sender: "user",
-      timestamp: "10:10 AM",
-    },
-    {
-      id: "10",
-      text: "Yes, please proceed. What documents do I need to provide?",
-      sender: "client",
-      timestamp: "10:15 AM",
-    },
-  ],
-  "2": [
-    {
-      id: "1",
-      text: "Good morning! I wanted to check on our filing schedule.",
-      sender: "client",
-      timestamp: "9:00 AM",
-    },
-    {
-      id: "2",
-      text: "Good morning! Let me pull up your account details.",
-      sender: "user",
-      timestamp: "9:05 AM",
-    },
-  ],
-  "3": [
-    {
-      id: "1",
-      text: "Payment confirmation received. Thank you!",
-      sender: "client",
-      timestamp: "2 days ago",
-    },
-  ],
-  "4": [
-    {
-      id: "1",
-      text: "I need to submit some additional documents for our registration.",
-      sender: "client",
-      timestamp: "3 days ago",
-    },
-  ],
-};
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function ChatPage() {
-  const [selectedConversationId, setSelectedConversationId] = useState<string>("1");
-  const [messages, setMessages] = useState<Record<string, Message[]>>(messagesData);
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<string>("");
+  const selectedConversationIdRef = useRef<string>("");
+  const [messages, setMessages] = useState<Record<string, Message[]>>({});
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
-  const selectedConversation = conversationsData.find(
+  // Keep ref in sync with state
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
+
+  // Fetch conversations on mount
+  useEffect(() => {
+    fetchConversations();
+  }, []);
+
+  // Fetch messages when conversation is selected
+  useEffect(() => {
+    if (selectedConversationId) {
+      // Always fetch messages when switching conversations to get any missed messages
+      fetchMessages(selectedConversationId);
+      // Mark messages as read when conversation is opened
+      markMessagesAsRead(selectedConversationId);
+    }
+  }, [selectedConversationId]);
+
+  // Set up Socket.io real-time subscriptions
+  const { socket } = useSocket();
+  const [prevConversationId, setPrevConversationId] = useState<string>("");
+
+  // Set up socket listeners ONCE (not dependent on selectedConversationId)
+  useEffect(() => {
+    if (!socket) return;
+
+    // Listen for new messages from ALL conversations
+    const handleNewMessage = (data: any) => {
+      console.log("Admin received new message via Socket.io:", data.message);
+      const newMessage = data.message;
+
+      const formattedMessage: Message = {
+        id: newMessage.id,
+        text: newMessage.message_text || '',
+        sender: newMessage.is_admin ? 'user' : 'client',
+        timestamp: new Date(newMessage.created_at).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        attachments: newMessage.attachments || [],
+      };
+
+      // If message is in the current conversation, add it to messages
+      const currentConvId = selectedConversationIdRef.current;
+      setMessages((prev) => {
+        if (data.orderId === currentConvId) {
+          const existingMessages = prev[currentConvId] || [];
+          // Check if message already exists to prevent duplicates
+          if (existingMessages.some(msg => msg.id === formattedMessage.id)) {
+            console.log("Message already exists, skipping duplicate:", formattedMessage.id);
+            return prev;
+          }
+          return {
+            ...prev,
+            [currentConvId]: [
+              ...existingMessages,
+              formattedMessage,
+            ],
+          };
+        }
+        return prev;
+      });
+
+      // Update conversation's last message and unread count
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.id === data.orderId
+            ? {
+                ...conv,
+                lastMessage: newMessage.message_text || 'Attachment',
+                timestamp: new Date(newMessage.created_at).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }),
+                // Increment unread count if message is from client and not current conversation
+                unread: !newMessage.is_admin && data.orderId !== currentConvId
+                  ? (conv.unread || 0) + 1
+                  : conv.unread || 0,
+              }
+            : conv
+        )
+      );
+
+      // Show notification if message is from client and not in current conversation
+      // Note: This must happen AFTER state updates to avoid "setState in render" errors
+      if (!newMessage.is_admin && data.orderId !== currentConvId) {
+        const conversation = conversations.find(c => c.id === data.orderId);
+        const senderName = conversation?.name || 'A customer';
+        toast.info(`New message from ${senderName}`, {
+          position: "top-right",
+          autoClose: 4000,
+        });
+      }
+    };
+
+    // Listen for message updates
+    const handleMessageUpdate = (data: any) => {
+      console.log("Admin received message update via Socket.io:", data.message);
+      const updatedMessage = data.message;
+
+      const formattedMessage: Message = {
+        id: updatedMessage.id,
+        text: updatedMessage.message_text || '',
+        sender: updatedMessage.is_admin ? 'user' : 'client',
+        timestamp: new Date(updatedMessage.created_at).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        attachments: updatedMessage.attachments || [],
+      };
+
+      const currentConvId = selectedConversationIdRef.current;
+      setMessages((prev) => {
+        if (data.orderId === currentConvId) {
+          return {
+            ...prev,
+            [currentConvId]:
+              prev[currentConvId]?.map((msg) =>
+                msg.id === formattedMessage.id ? formattedMessage : msg
+              ) || [],
+          };
+        }
+        return prev;
+      });
+    };
+
+    socket.on("new-message", handleNewMessage);
+    socket.on("message-updated", handleMessageUpdate);
+
+    // Cleanup on unmount only
+    return () => {
+      socket.off("new-message", handleNewMessage);
+      socket.off("message-updated", handleMessageUpdate);
+    };
+  }, [socket]); // Only depend on socket, not selectedConversationId
+
+  // Handle joining/leaving rooms when conversation changes
+  useEffect(() => {
+    if (!socket || !selectedConversationId) return;
+
+    // Leave previous room when switching conversations
+    if (prevConversationId && prevConversationId !== selectedConversationId) {
+      socket.emit("leave-order-room", prevConversationId);
+      console.log(`Admin left room: order:${prevConversationId}`);
+    }
+
+    // Join the selected conversation's room
+    socket.emit("join-order-room", selectedConversationId);
+    console.log(`Admin joined room: order:${selectedConversationId}`);
+    setPrevConversationId(selectedConversationId);
+  }, [socket, selectedConversationId]);
+
+  const fetchConversations = async () => {
+    try {
+      setIsLoadingConversations(true);
+      const res = await fetch('/api/messages/conversations');
+      const data = await res.json();
+
+      if (res.ok && data.conversations) {
+        setConversations(data.conversations);
+        // Auto-select first conversation
+        if (data.conversations.length > 0 && !selectedConversationId) {
+          setSelectedConversationId(data.conversations[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching conversations:', error);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
+  const fetchMessages = async (orderId: string) => {
+    try {
+      setIsLoadingMessages(true);
+      const res = await fetch(`/api/messages/${orderId}`);
+      const data = await res.json();
+
+      if (res.ok && data.messages) {
+        const formattedMessages = data.messages.map((msg: any) => ({
+          id: msg.id,
+          text: msg.message_text || '',
+          sender: msg.is_admin ? 'user' : 'client',
+          timestamp: new Date(msg.created_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          attachments: msg.attachments || [],
+        }));
+
+        setMessages((prev) => ({
+          ...prev,
+          [orderId]: formattedMessages,
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  };
+
+  const markMessagesAsRead = async (orderId: string) => {
+    try {
+      const res = await fetch('/api/messages/mark-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+
+      if (res.ok) {
+        // Update the conversation's unread count to 0
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv.id === orderId ? { ...conv, unread: 0 } : conv
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+    }
+  };
+
+    const handleSendMessage = async (
+
+      messageText: string,
+
+      attachments: Array<{ url: string; type: string; name: string; size: number }> = []
+
+    ) => {
+
+      if (!selectedConversationId || !socket) {
+
+        toast.error("Cannot send message: socket not connected or no conversation selected.");
+
+        return;
+
+      }
+
+  
+
+      try {
+
+              const payload = {
+
+                orderId: selectedConversationId,
+
+                messageText: messageText || null,
+
+                attachments,
+
+                fromAdminApp: true,
+
+              };
+
+  
+
+        socket.emit("send-message", payload, (ack: { success: boolean; error?: string }) => {
+
+          if (!ack.success) {
+
+            toast.error(ack.error || "Failed to send message.");
+
+          }
+
+          // Message will be added optimistically via the 'new-message' broadcast event.
+
+          // UI updates will happen in the socket listeners.
+
+        });
+
+  
+
+      } catch (error) {
+
+        console.error("Error sending message via socket:", error);
+
+        toast.error("An unexpected error occurred while sending the message.");
+
+      }
+
+    };
+
+  const selectedConversation = conversations.find(
     (conv) => conv.id === selectedConversationId
   );
 
-  const handleSendMessage = (messageText: string) => {
-    if (!selectedConversationId) return;
+  if (isLoadingConversations) {
+    return (
+      <div className="h-full flex items-center justify-center bg-white rounded-2xl ">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-gray-500">Loading conversations...</p>
+        </div>
+      </div>
+    );
+  }
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      text: messageText,
-      sender: "user",
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-
-    setMessages((prev) => ({
-      ...prev,
-      [selectedConversationId]: [...(prev[selectedConversationId] || []), newMessage],
-    }));
-  };
+  if (conversations.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center bg-white rounded-2xl ">
+        <div className="text-center">
+          <p className="text-gray-500 text-lg">No conversations yet</p>
+          <p className="text-gray-400 text-sm mt-2">Messages will appear here when customers contact you</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full flex overflow-hidden bg-white rounded-2xl shadow-sm">
+    <div className="h-full flex overflow-hidden bg-white rounded-2xl ">
       {/* Chat Sub-Sidebar */}
       <ChatSidebar
-        conversations={conversationsData}
+        conversations={conversations}
         selectedConversationId={selectedConversationId}
         onSelectConversation={setSelectedConversationId}
       />
@@ -164,10 +339,17 @@ export default function ChatPage() {
       {selectedConversation && (
         <ChatMessages
           conversationName={selectedConversation.name}
+          conversationId={selectedConversationId}
           messages={messages[selectedConversationId] || []}
           onSendMessage={handleSendMessage}
+          isLoading={isLoadingMessages}
+          orderDetails={selectedConversation.orderDetails}
+          user={selectedConversation.user}
         />
       )}
+
+      {/* Toast Notifications */}
+      <ToastContainer position="top-right" autoClose={3000} />
     </div>
   );
 }

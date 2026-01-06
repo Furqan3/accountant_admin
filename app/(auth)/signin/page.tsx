@@ -1,14 +1,48 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/app/shared/logo";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function SignIn() {
   const router = useRouter();
+  const { signIn, user, loading: authLoading } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // If the user is already signed in, redirect to the dashboard.
+  // The middleware and dashboard layout will handle authorization.
+  useEffect(() => {
+    if (!authLoading && user) {
+      console.log("✅ User is signed in, redirecting to dashboard...");
+      router.push("/dashboard");
+    }
+  }, [user, authLoading, router]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    router.push("/dashboard");
+    setError("");
+    setLoading(true);
+
+    try {
+      const { error: signInError } = await signIn(email, password);
+
+      if (signInError) {
+        setError(signInError.message || "Failed to sign in");
+        setLoading(false);
+      } else {
+        console.log("✅ Sign in successful, waiting for redirect...");
+        // Loading state will remain true until redirect happens
+        // This prevents multiple submissions
+        router.push("/dashboard");
+      }
+    } catch (err) {
+      setError("An unexpected error occurred");
+      setLoading(false);
+    }
   };
 
   return (
@@ -22,6 +56,13 @@ export default function SignIn() {
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Error Message */}
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
             {/* Email Field */}
             <div>
               <label
@@ -31,13 +72,15 @@ export default function SignIn() {
                 Email
               </label>
               <input
-
                 type="email"
                 id="email"
                 name="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email"
                 className="w-full px-4 text-black py-3 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-zinc-50"
                 required
+                disabled={loading}
               />
             </div>
 
@@ -53,9 +96,12 @@ export default function SignIn() {
                 type="password"
                 id="password"
                 name="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 className="w-full px-4 py-3 border text-black border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-zinc-50"
                 required
+                disabled={loading}
               />
             </div>
 
@@ -85,9 +131,10 @@ export default function SignIn() {
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full bg-primary text-white py-3 rounded-lg font-medium hover:bg-primary-dark transition-colors duration-200"
+              disabled={loading}
+              className="w-full bg-primary text-white py-3 rounded-lg font-medium hover:bg-primary-dark transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Sign In
+              {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
 

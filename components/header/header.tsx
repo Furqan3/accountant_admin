@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Menu, ChevronDown, LogOut, User } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -11,13 +12,26 @@ interface HeaderProps {
 export default function Header({ onMenuClick }: HeaderProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const router = useRouter();
+  const { adminUser, signOut } = useAuth();
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    await signOut();
     router.push("/signin");
   };
 
+  // Get initials from full name
+  const getInitials = (name: string | null) => {
+    if (!name) return "AD";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   return (
-    <header className="w-full bg-white p-4 flex items-center justify-between shadow-sm  ">
+    <header className="w-full bg-white p-4 flex items-center justify-between   ">
       <Menu
         onClick={onMenuClick}
         className="w-6 h-6 text-gray-600 cursor-pointer hover:text-gray-900 transition-colors"
@@ -31,13 +45,17 @@ export default function Header({ onMenuClick }: HeaderProps) {
         >
           {/* Profile Picture */}
           <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white font-semibold">
-            JD
+            {getInitials(adminUser?.full_name || null)}
           </div>
 
           {/* Profile Name */}
           <div className="text-left hidden md:block">
-            <p className="text-sm font-medium text-gray-900">John Doe</p>
-            <p className="text-xs text-gray-500">Admin</p>
+            <p className="text-sm font-medium text-gray-900">
+              {adminUser?.full_name || "Admin"}
+            </p>
+            <p className="text-xs text-gray-500 capitalize">
+              {adminUser?.role.replace("_", " ") || "Admin"}
+            </p>
           </div>
 
           <ChevronDown
@@ -49,7 +67,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
         {/* Dropdown Menu */}
         {isDropdownOpen && (
-          <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+          <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg  border border-gray-200 py-2 z-50">
             <button
               onClick={() => {
                 setIsDropdownOpen(false);

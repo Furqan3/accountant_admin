@@ -24,7 +24,7 @@ export default function DashboardHeader({
   onSortChange,
 }: DashboardHeaderProps) {
   return (
-    <div className="flex flex-col gap-4 md:flex-row bg-white p-5 md:items-center md:justify-between rounded-2xl shadow-sm">
+    <div className="flex flex-col gap-4 md:flex-row bg-white p-5 md:items-center md:justify-between rounded-2xl ">
       
       
       <div>
@@ -57,8 +57,9 @@ export default function DashboardHeader({
 
         {/* Sort */}
         <select
+          defaultValue="new"
           onChange={(e) => onSortChange?.(e.target.value)}
-          className="px-4 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+          className="px-4 py-2 rounded-lg border border-gray-500 bg-white focus:outline-none focus:ring-2 focus:ring-primary"
         >
           {sortOptions.map((option) => (
             <option key={option.value} value={option.value}>

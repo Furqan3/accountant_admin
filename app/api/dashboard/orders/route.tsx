@@ -1,138 +1,108 @@
 import { NextResponse } from 'next/server';
- const ordersData = [
-  {
-    id: "1",
-    orderNo: "ORD-000003",
-    date: "10/18/2025",
-    company: "Tech Solutions Ltd",
-    status: "Pending",
-    paymentStatus: "Paid",
-    items: [
-      { id: "i1", title: "Registered Office Address", qty: 1, price: 30 },
-      { id: "i2", title: "Confirmation Statement", price: 45.3 },
-      {
-        id: "i3",
-        title: "Register company as dormant & file Confirmation Statement",
-        price: 12.56,
-      },
-    ],
-    total: 90.8,
-  },
-  {
-    id: "2",
-    orderNo: "ORD-000004",
-    date: "10/19/2025",
-    company: "Alpha Systems Ltd",
-    status: "Completed",
-    paymentStatus: "Paid",
-    items: [
-      { id: "i4", title: "Registered Office Address", qty: 1, price: 30 },
-    ],
-    total: 30,
-  },
-  {
-    id: "3",
-    orderNo: "ORD-000005",
-    date: "10/20/2025",
-    company: "Bright Tech Ltd",
-    status: "Pending",
-    paymentStatus: "Unpaid",
-    items: [
-      { id: "i5", title: "Confirmation Statement", price: 45.3 },
-    ],
-    total: 45.3,
-  },
-  {
-    id: "4",
-    orderNo: "ORD-000006",
-    date: "10/21/2025",
-    company: "Nova Solutions",
-    status: "Completed",
-    paymentStatus: "Paid",
-    items: [
-      { id: "i6", title: "Registered Office Address", qty: 1, price: 30 },
-      { id: "i7", title: "VAT Registration", price: 50 },
-    ],
-    total: 80,
-  },
-  {
-    id: "5",
-    orderNo: "ORD-000007",
-    date: "10/22/2025",
-    company: "Orbit Enterprises",
-    status: "Pending",
-    paymentStatus: "Paid",
-    items: [
-      { id: "i8", title: "Dormant Company Filing", price: 25 },
-    ],
-    total: 25,
-  },
-  {
-    id: "6",
-    orderNo: "ORD-000008",
-    date: "10/23/2025",
-    company: "Vertex Ltd",
-    status: "Completed",
-    paymentStatus: "Paid",
-    items: [
-      { id: "i9", title: "Confirmation Statement", price: 45.3 },
-      { id: "i10", title: "Registered Office Address", qty: 1, price: 30 },
-    ],
-    total: 75.3,
-  },
-  {
-    id: "7",
-    orderNo: "ORD-000009",
-    date: "10/24/2025",
-    company: "Skyline Corp",
-    status: "Pending",
-    paymentStatus: "Unpaid",
-    items: [
-      { id: "i11", title: "Company Incorporation", price: 120 },
-    ],
-    total: 120,
-  },
-  {
-    id: "8",
-    orderNo: "ORD-000010",
-    date: "10/25/2025",
-    company: "Fusion Tech",
-    status: "Completed",
-    paymentStatus: "Paid",
-    items: [
-      { id: "i12", title: "Registered Office Address", qty: 1, price: 30 },
-    ],
-    total: 30,
-  },
-  {
-    id: "9",
-    orderNo: "ORD-000011",
-    date: "10/26/2025",
-    company: "CloudNine Ltd",
-    status: "Pending",
-    paymentStatus: "Paid",
-    items: [
-      { id: "i13", title: "VAT Deregistration", price: 60 },
-    ],
-    total: 60,
-  },
-  {
-    id: "10",
-    orderNo: "ORD-000012",
-    date: "10/27/2025",
-    company: "NextGen Solutions",
-    status: "Completed",
-    paymentStatus: "Paid",
-    items: [
-      { id: "i14", title: "Confirmation Statement", price: 45.3 },
-      { id: "i15", title: "Dormant Company Filing", price: 25 },
-    ],
-    total: 70.3,
-  },
-];
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 export async function GET() {
-  return NextResponse.json({
-    ordersData
-  });
+  try {
+    // Fetch orders from Supabase - optimized query
+    // Using admin client to bypass RLS and access all orders
+    const supabaseAdmin = getSupabaseAdmin();
+
+    // Single optimized query
+    const { data: orders, error } = await supabaseAdmin
+      .from('orders')
+      .select('id, amount, currency, status, payment_status, service_type, metadata, created_at, user_id')
+      .order('created_at', { ascending: false })
+      .limit(50); // Limit to most recent 50 orders for performance
+
+    if (error) {
+      console.error('Error fetching orders:', error);
+      return NextResponse.json({
+        ordersData: [],
+        error: error.message
+      }, { status: 500 });
+    }
+
+    console.log(`✅ Fetched ${orders?.length || 0} orders from database`);
+
+    // Skip profile fetching for now - we get company names from order metadata
+    // This makes the API much faster
+    const userMap = new Map();
+
+    // Transform Supabase orders to match dashboard format
+    const ordersData = orders?.map((order: any, index: number) => {
+      const userInfo = userMap.get(order.user_id);
+
+      // Parse metadata to get items and company info
+      let items: any[] = [];
+      let companyName = 'N/A';
+
+      try {
+        const metadata = order.metadata;
+        if (metadata?.items) {
+          const parsedItems = typeof metadata.items === 'string'
+            ? JSON.parse(metadata.items)
+            : metadata.items;
+
+          if (Array.isArray(parsedItems)) {
+            // Get company name from first item (same as frontend does)
+            if (parsedItems.length > 0 && parsedItems[0].companyName) {
+              companyName = parsedItems[0].companyName;
+            }
+
+            // Map items to dashboard format
+            items = parsedItems.map((item: any, idx: number) => ({
+              id: `i${order.id}-${idx}`,
+              title: item.name || item.title || 'Service',
+              qty: item.quantity || 1,
+              price: item.price || 0,
+            }));
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing order metadata:', e);
+      }
+
+      // Fallback to profile data if no company name in metadata
+      if (companyName === 'N/A' && userInfo) {
+        companyName = userInfo.company_name || userInfo.full_name || 'Unknown User';
+      }
+
+      // If no items in metadata, create default item from service_type
+      if (items.length === 0 && order.service_type) {
+        items = [{
+          id: `i${order.id}-default`,
+          title: order.service_type,
+          qty: 1,
+          price: order.amount / 100, // Convert from cents
+        }];
+      }
+
+      // Capitalize status properly
+      const formatStatus = (status: string) => {
+        return status.charAt(0).toUpperCase() + status.slice(1);
+      };
+
+      return {
+        id: order.id,
+        orderNo: `ORD-${String(index + 1).padStart(6, '0')}`,
+        date: new Date(order.created_at).toLocaleDateString('en-US'),
+        createdAt: order.created_at, // Keep raw timestamp for sorting
+        company: companyName,
+        status: formatStatus(order.status),
+        paymentStatus: formatStatus(order.payment_status),
+        items,
+        total: order.amount / 100, // Convert from cents to dollars
+      };
+    }) || [];
+
+    return NextResponse.json({
+      ordersData
+    });
+  } catch (error: any) {
+    console.error('Unexpected error fetching orders:', error);
+    return NextResponse.json({
+      ordersData: [],
+      error: error.message
+    }, { status: 500 });
+  }
 }
